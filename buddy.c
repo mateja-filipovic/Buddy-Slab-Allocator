@@ -63,29 +63,6 @@ void* buddy_allocate(int sizeInBlocks){
 		BUDDY->pool[i] = bud;
 	}
 	return block;
-	/*
-	int i;
-	for (i = 0; get_blk_size(i) < sizeInBlocks; i++); //dodato *4096
-	if (i >= BUDDY->max_order+1) {
-		printf("Buddy err: No space available\n");
-		return NULL;
-	}
-	else if (BUDDY->pool[i] != NULL) {
-		void* block = BUDDY->pool[i];
-		BUDDY->pool[i] = *(void**)BUDDY->pool[i];
-		return block;
-	}
-	else {
-		void* block = buddy_allocate(get_blk_size(i + 1)); //dodato
-		if (block != NULL) {
-			void* bud = get_buddy_of(block, i);
-			if (bud != NULL) {
-				*(void**)bud = BUDDY->pool[i];
-				BUDDY->pool[i] = bud;
-			}
-		}
-		return block;
-	}*/
 }
 
 void buddy_deallocate(void* blkAddr, int sizeInBlocks){

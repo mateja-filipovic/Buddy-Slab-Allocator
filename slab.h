@@ -21,4 +21,5 @@ int kmem_cache_error(kmem_cache_t *cachep); // Print error mes
 //dodato:
 int is_cache_valid(void* cachep);
 void print_cache(struct kmem_cache_s* c);
+int _kmem_cache_free(kmem_cache_t* cachep, void* objp, int is_internal); // Deallocate one object from cache
 #endif

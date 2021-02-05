@@ -3,6 +3,8 @@
 
 #include "buddy.h"
 
+#define SMALL_MEM_BUFFER_NUM
+
 typedef struct slab_s {
 	void* base_addr;
 	void* starting_addr;

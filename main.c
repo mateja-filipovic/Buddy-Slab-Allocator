@@ -9,6 +9,28 @@ int main() {
 	int sz = 1000; //267 PUCA SA NEPARNIM BROJEM BLOKOVA WTFFF
 	void* space = malloc(sz * BLOCK_SIZE);
 	kmem_init(space, sz);
+
+
+	void* ptr1 = kmalloc(31);
+	void* ptr2 = kmalloc(50);
+
+	kfree((char*)ptr1);
+	kfree(ptr2);
+	/*
+	void* my_buff = kmalloc(32);
+	void* my_buff1 = kmalloc(32);
+	void* my_buff2 = kmalloc(32);
+	void* my_buff3 = kmalloc(32);
+	void* my_buff5 = kmalloc(32);
+	void* my_buff6 = kmalloc(32);
+
+	void* gg = kmalloc(116);
+	void* gg1 = kmalloc(116);
+	void* gg2 = kmalloc(116);
+	void* gg3 = kmalloc(116);
+	void* gg4 = kmalloc(116);
+	void* gg5 = kmalloc(116);
+	void* gg6 = kmalloc(116);*/
 	
 	kmem_cache_s* ch = kmem_cache_create("PCB", 69, NULL, NULL);
 	kmem_cache_s* ch2 = kmem_cache_create("SEM", 70, NULL, NULL);
