@@ -6,18 +6,22 @@
 buddy_s* BUDDY;
 void buddy_init(void* space, int numOfBlocks) {
 	
+	//set everything to 0
 	memset(space, 0, numOfBlocks * BLOCK_SIZE);
 	BUDDY = (buddy_s*)space;
+	//initialize struct memebers
 	BUDDY->base_addr = space;
 	BUDDY->starting_addr = (char*)space + BLOCK_SIZE;
 	BUDDY->ending_addr = (char*)space + numOfBlocks * BLOCK_SIZE;
-	//if (numOfBlocks % 2 == 1) numOfBlocks--; //vratiti ako baguje!!
-	BUDDY->capacity = numOfBlocks - 1;
-	BUDDY->max_order = (int)ceil(log(BUDDY->capacity) / log(2));
+	BUDDY->blocks_total = numOfBlocks - 1;
+	BUDDY->max_order = (int)ceil(log(BUDDY->blocks_total) / log(2));
+	//initialize the pool to 0
 	int i;
 	for (i = 0; i < POOL_MAX_SIZE; i++)
 		BUDDY->pool[i] = 0;
-	int temp_cap = BUDDY->capacity;
+
+	//split the remaining space and save addresses in the pool
+	int temp_cap = BUDDY->blocks_total;
 	void* temp_addr = BUDDY->starting_addr;
 	i = BUDDY->max_order;
 	while (temp_cap > 0) {
@@ -37,7 +41,7 @@ void print_buddy() {
 	printf("Buddy base address: %p\n", BUDDY->base_addr);
 	printf("Buddy start address: %p\n", BUDDY->starting_addr);
 	printf("Buddy end address: %p\n", BUDDY->ending_addr);
-	printf("Buddy block capacity: %d\n", BUDDY->capacity);
+	printf("Buddy block capacity: %d\n", BUDDY->blocks_total);
 	unsigned int i;
 	for (i = 0; i < BUDDY->max_order + 1; i++)
 		printf("%d -> %p\n", i, BUDDY->pool[i]);
@@ -47,9 +51,11 @@ void* buddy_allocate(int sizeInBlocks){
 	int i, order;
 	void* block, * bud;
 	i = 0;
-	while (get_blk_size(i) < sizeInBlocks)
+	//find the minimum size in blocks
+	while (_get_blk_size(i) < sizeInBlocks)
 		i++;
 	order = i;
+	//find the firstbig enough block available
 	for (;; i++) {
 		if (i > BUDDY->max_order)
 			return NULL;
@@ -59,7 +65,7 @@ void* buddy_allocate(int sizeInBlocks){
 	block = BUDDY->pool[i];
 	BUDDY->pool[i] = *(void**)BUDDY->pool[i];
 	while (i-- > order) {
-		bud = get_buddy_of(block, i);
+		bud = _get_buddy_of(block, i);
 		BUDDY->pool[i] = bud;
 	}
 	return block;
@@ -67,35 +73,43 @@ void* buddy_allocate(int sizeInBlocks){
 
 void buddy_deallocate(void* blkAddr, int sizeInBlocks){
 	int i;
-	for (i = 0; get_blk_size(i) < sizeInBlocks; i++);
-	void* bud = get_buddy_of(blkAddr, i);
+	//find the order of the block
+	for (i = 0; _get_blk_size(i) < sizeInBlocks; i++);
+	void* bud = _get_buddy_of(blkAddr, i);
+	//add it to the pool of free blocks
 	void** p = &BUDDY->pool[i];
+	//find the buddy in the same pool index
 	while ((*p != NULL) && (*p != bud))
 		p = (void**)*p;
+	//if buddy is not found/free
 	if (bud > BUDDY->ending_addr || *p != bud) {
 		*(void**)blkAddr = BUDDY->pool[i];
 		BUDDY->pool[i] = blkAddr;
 	}
-	else {
-		*p = *(void**)bud;
-		if (blkAddr > bud)
-			buddy_deallocate(bud, get_blk_size(i + 1)); //dodato
-		else
-			buddy_deallocate(blkAddr, get_blk_size(i + 1)); //dodato
+	else { //if the buddy is free
+		if (bud != 0) { //this check added for nullptr warning, REVERT IF NEEDED, but should not be a problem
+			*p = *(void**)bud;
+			if (blkAddr > bud) //if the buddy is free, dealloc the bigger block starting from buddy address
+				buddy_deallocate(bud, _get_blk_size(i + 1));
+			else //if the buddy is free, dealloc the bigger block starting from the starting block addr
+				buddy_deallocate(blkAddr, _get_blk_size(i + 1));
+		}
 	}
 }
 
-int get_blk_size(int i) { return 1 << i; }
 
-void* get_buddy_of(void* b, int i) { 
-	//return (void*)(((int)b) ^  (1 << (i)) ); 
-	int tmp = (int)b - (int)BUDDY->starting_addr; //namesti offset heap-a na nula
-	tmp ^= (1 << (i + 12));
+//helper functions
+int _get_blk_size(int i) { return 1 << i; }
+
+void* _get_buddy_of(void* b, int i) { 
+	//for the algorithm to work, heap start must be 0
+	//so offset the starting address by buddy->starting_addr
+	int tmp = (int)b - (int)BUDDY->starting_addr;
+	tmp ^= (1 << (i + 12)); //must add +12 cos block size is 4096 = 2^12
+	//after the calc is finished, add the offset back!
 	void* ret = (void*)((char*)BUDDY->starting_addr + tmp);
-	/*if (ret < BUDDY->starting_addr)
-		return NULL;*/
+	//error checking
 	if (ret > BUDDY->ending_addr)
 		return 0;
-	//printf("%p asked for buddy, found: %p, i = %d\n", b, ret, i);
 	return ret;
-} //dodato +13 jer 4096 = 2^13
+}
