@@ -1,13 +1,23 @@
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
+#include <windows.h>
 #include "slab.h"
 #include "buddy.h"
 #include "cache.h"
 
 kmem_cache_s* cache_list_head = NULL;
+HANDLE mtx;
 
 void kmem_init(void* space, int block_num){
+
+	//inicijalizacija mutexa
+	mtx = CreateMutex(NULL, FALSE, NULL);
+	if (mtx == NULL) {
+		printf("unable to allocate mutex??");
+		return;
+	}
+
 	buddy_init(space, block_num);
 
 	int i;
@@ -23,6 +33,13 @@ void kmem_init(void* space, int block_num){
 }
 
 kmem_cache_t* kmem_cache_create(const char* name, size_t size, void(*ctor)(void*), void(*dtor)(void*)){
+	mutex_wait();
+	void* ret = _kmem_cache_create(name, size, ctor, dtor);
+	mutex_signal();
+	return ret;
+}
+
+kmem_cache_t* _kmem_cache_create(const char* name, size_t size, void(*ctor)(void*), void (*dtor)(void*)) {
 	kmem_cache_s* cache = (kmem_cache_s*)buddy_allocate(1);
 	if (cache == NULL)
 		return cache;
@@ -43,12 +60,19 @@ kmem_cache_t* kmem_cache_create(const char* name, size_t size, void(*ctor)(void*
 }
 
 int kmem_cache_shrink(kmem_cache_t* cachep){
+	mutex_wait();
+	int ret = _kmem_cache_shrink(cachep);
+	mutex_signal();
+	return ret;
+}
+
+int _kmem_cache_shrink(kmem_cache_t* cachep) {
 	int num_freed = 0;
 	if (!is_cache_valid(cachep)) {
 		printf("No such cache exists!\n");
 		return num_freed;
 	}
-	slab_s* tmp = cachep->empty_slabs, *helper = NULL;
+	slab_s* tmp = cachep->empty_slabs, * helper = NULL;
 	while (tmp != NULL) {
 		num_freed++;
 		helper = tmp->next;
@@ -61,12 +85,19 @@ int kmem_cache_shrink(kmem_cache_t* cachep){
 }
 
 void* kmem_cache_alloc(kmem_cache_t* cachep){
+	mutex_wait();
+	void* ret = _kmem_cache_alloc(cachep);
+	mutex_signal();
+	return ret;
+}
+
+void* _kmem_cache_alloc(kmem_cache_t* cachep) {
 	if (!is_cache_valid(cachep)) {
 		printf("Cache err: No such cache exists");
 		return NULL;
 	}
 	void* ret;
-	if(cachep->partial_slabs != NULL){
+	if (cachep->partial_slabs != NULL) {
 		//print_slab(cachep->partial_slabs);
 		ret = allocate_obj_from_slab(cachep->partial_slabs);
 		if (cachep->partial_slabs->state == 2) {
@@ -104,10 +135,19 @@ void* kmem_cache_alloc(kmem_cache_t* cachep){
 }
 
 void kmem_cache_free(kmem_cache_t* cachep, void* objp) {
+	mutex_wait();
 	_kmem_cache_free(cachep, objp, 0);
+	mutex_signal();
 }
 
 void* kmalloc(size_t size){
+	mutex_wait();
+	void* ret = _kmalloc(size);
+	mutex_signal();
+	return ret;
+}
+
+void* _kmalloc(size_t size) {
 	kmem_cache_s* cp;
 	if (size > (int)pow(2, 17)) {
 		printf("Cache err: No buffer is that big!\n");
@@ -125,7 +165,7 @@ void* kmalloc(size_t size){
 			break;
 		cp = cp->next;
 	}
-	if(cp == NULL) {
+	if (cp == NULL) {
 		printf("Cache err: Could not find buffer!\n");
 		return NULL;
 	}
@@ -137,6 +177,12 @@ void* kmalloc(size_t size){
 }
 
 void kfree(const void* objp){
+	mutex_wait();
+	_kfree(objp);
+	mutex_signal();
+}
+
+void _kfree(const void* objp) {
 	kmem_cache_s* cp = cache_list_head;
 	char firstBuffer[30];
 	sprintf_s(firstBuffer, 30, "size-2^%d", 17); //17 je max velicina bafera
@@ -158,6 +204,12 @@ void kfree(const void* objp){
 }
 
 void kmem_cache_destroy(kmem_cache_t* cachep){
+	mutex_wait();
+	_kmem_cache_destroy(cachep);
+	mutex_signal();
+}
+
+void _kmem_cache_destroy(kmem_cache_t* cachep) {
 	if (!is_cache_valid(cachep)) {
 		printf("Cache err: No such cache exists to be destroyed\n");
 		return;
@@ -186,6 +238,12 @@ void kmem_cache_destroy(kmem_cache_t* cachep){
 }
 
 void kmem_cache_info(kmem_cache_t* cachep){
+	mutex_wait();
+	_kmem_cache_info(cachep);
+	mutex_signal();
+}
+
+void _kmem_cache_info(kmem_cache_t* cachep) {
 	kmem_cache_s* cp = cache_list_head;
 	while (cp != NULL) {
 		if (cp == cachep)
@@ -276,3 +334,8 @@ int _kmem_cache_free(kmem_cache_t* cachep, void* objp, int is_internal){
 		printf("Cache err: No such object exists!\n");
 	return -1;
 }
+
+//funkcije za rad sa mutexom
+void mutex_wait() { WaitForSingleObject(mtx, INFINITE); }
+void mutex_signal() { ReleaseMutex(mtx); }
+
