@@ -10,11 +10,13 @@ typedef struct slab_s {
 	void* starting_addr;
 	void* ending_addr;
 	void* first_free;
-	int state; // 0 - empty, 1 - partial, 2 - full
-	int num_of_allocs;
+	//unsigned int first_free;
+	int num_of_blocks;
 	int capacity;
+	int state; // 0 - empty, 1 - partial, 2 - full
+	int num_of_allocs; //objects allocated so far
 	int obj_size;
-	struct slab_s* next;
+	struct slab_s* next; //used by the cache manager
 }slab_s;
 
 typedef struct kmem_cache_s{
@@ -26,19 +28,23 @@ typedef struct kmem_cache_s{
 	int count_full;
 	int obj_size;
 	int num_of_allocated_objs;
+	int num_of_allocs_called;
+	int num_of_deallocs_called;
 	char name[30];
 	void (*ctor)(void*);
 	void (*dtor)(void*);
 	struct kmem_cache_s* next;
 }kmem_cache_s;
 
+slab_s* allocate_a_slab(int obj_size); //allocate a new slab
+void deallocate_a_slab(slab_s* sl); //free a slab
 
+void print_slab(slab_s* sl); //print slab info
 
-void print_slab(slab_s* sl);
-void* allocate_obj_from_slab(slab_s* sl);
-void deallocate_a_slab(slab_s* sl);
-int dealloc_obj_from_slab(slab_s* sl, void* obj);
-int is_obj_valid(slab_s* sl, void* obj);
+void* allocate_obj_from_slab(slab_s* sl, void(*ctor)(void*)); //allocate an object and initialize it
+int dealloc_obj_from_slab(slab_s* sl, void* obj); //return 0 if dealloc is successful
 
-slab_s* allocate_a_slab(int obj_size);
+//helper function
+int is_obj_valid(slab_s* sl, void* obj); //check if the pointer to dealloc is valid
+
 #endif
