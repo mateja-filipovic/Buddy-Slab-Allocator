@@ -18,18 +18,22 @@ void kmem_cache_destroy(kmem_cache_t *cachep); // Deallocate cache
 void kmem_cache_info(kmem_cache_t *cachep); // Print cache info
 int kmem_cache_error(kmem_cache_t *cachep); // Print error mes
 
-//dodato:
+//helper functions
 int is_cache_valid(void* cachep);
 void print_cache(struct kmem_cache_s* c);
-int _kmem_cache_free(kmem_cache_t* cachep, void* objp, int is_internal); // Deallocate one object from cache
 
-kmem_cache_t* _kmem_cache_create(const char* name, size_t size, void(*ctor)(void*), void (*dtor)(void*));// Allocate cache
-int _kmem_cache_shrink(kmem_cache_t* cachep); // Shrink cache
-void* _kmem_cache_alloc(kmem_cache_t* cachep); // Allocate one object from cache
-void* _kmalloc(size_t size); // Alloacate one small memory buffer
-void _kfree(const void* objp); // Deallocate one small memory buffer
-void _kmem_cache_destroy(kmem_cache_t* cachep); // Deallocate cache
-void _kmem_cache_info(kmem_cache_t* cachep); // Print cache info
+//wrappers call these functions
+int _kmem_cache_free(kmem_cache_t* cachep, void* objp, int is_internal); //added the last parameter, to know who called the function (user/internal call)
+kmem_cache_t* _kmem_cache_create(const char* name, size_t size, void(*ctor)(void*), void (*dtor)(void*));
+int _kmem_cache_shrink(kmem_cache_t* cachep);
+void* _kmem_cache_alloc(kmem_cache_t* cachep);
+void* _kmalloc(size_t size);
+void _kfree(const void* objp);
+void _kmem_cache_destroy(kmem_cache_t* cachep);
+void _kmem_cache_info(kmem_cache_t* cachep);
+
+//sync functions, used in wrappers
 void mutex_wait();
 void mutex_signal();
+
 #endif
