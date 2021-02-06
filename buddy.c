@@ -6,7 +6,7 @@
 buddy_s* BUDDY;
 void buddy_init(void* space, int numOfBlocks) {
 	
-	//set everything to 0
+	//set everything to 0 
 	memset(space, 0, numOfBlocks * BLOCK_SIZE);
 	BUDDY = (buddy_s*)space;
 	//initialize struct memebers
