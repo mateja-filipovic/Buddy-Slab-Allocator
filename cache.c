@@ -6,12 +6,8 @@
 #define MIN_OBJ_SIZE 4
 
 
-slab_s* allocate_a_slab(int obj_size) {
+slab_s* allocate_a_slab(int obj_size, int* ret_param) {
 	//get the number of blocks needed
-	/*int block_num = 1;
-	if (obj_size > BLOCK_SIZE) {
-		block_num = 32;
-	}*/
 	int block_num = (sizeof(slab_s) + 10 * obj_size) / BLOCK_SIZE;
 	if (sizeof(slab_s) + 10 * obj_size % BLOCK_SIZE != 0)
 		block_num++;
@@ -27,6 +23,8 @@ slab_s* allocate_a_slab(int obj_size) {
 	sl->starting_addr = (char*)sl->base_addr + sizeof(slab_s);      //always cast to char* cos of pointer arithmetic!!
 	sl->ending_addr = (char*)sl->base_addr + BLOCK_SIZE * block_num;
 	sl->first_free = sl->starting_addr;
+
+	*ret_param = (block_num * BLOCK_SIZE - sizeof(slab_s)) / obj_size;
 
 	if (obj_size < MIN_OBJ_SIZE)
 		obj_size = MIN_OBJ_SIZE;
@@ -97,7 +95,7 @@ void deallocate_a_slab(slab_s* sl){
 
 }
 
-int dealloc_obj_from_slab(slab_s* sl, void* obj){
+int dealloc_obj_from_slab(slab_s* sl, void* obj, void(*dtor)(void*)){
 	
 	if (sl->num_of_allocs == 0)
 		return -1; //no objs allocated
@@ -114,6 +112,9 @@ int dealloc_obj_from_slab(slab_s* sl, void* obj){
 		sl->state = 1;
 	else if (sl->num_of_allocs == 0)
 		sl->state = 0;
+
+	if (dtor != NULL)
+		(*dtor)(obj);
 
 	return 0;
 }

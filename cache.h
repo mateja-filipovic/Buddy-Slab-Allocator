@@ -28,21 +28,22 @@ typedef struct kmem_cache_s{
 	int count_full;
 	int obj_size;
 	int num_of_allocated_objs;
-	int num_of_allocs_called;
-	int num_of_deallocs_called;
+	int objs_per_slab;
+	int num_of_blocks;
+	int num_of_errors;
 	char name[30];
 	void (*ctor)(void*);
 	void (*dtor)(void*);
 	struct kmem_cache_s* next;
 }kmem_cache_s;
 
-slab_s* allocate_a_slab(int obj_size); //allocate a new slab
+slab_s* allocate_a_slab(int obj_size, int* ret_param); //allocate a new slab
 void deallocate_a_slab(slab_s* sl); //free a slab
 
 void print_slab(slab_s* sl); //print slab info
 
 void* allocate_obj_from_slab(slab_s* sl, void(*ctor)(void*)); //allocate an object and initialize it
-int dealloc_obj_from_slab(slab_s* sl, void* obj); //return 0 if dealloc is successful
+int dealloc_obj_from_slab(slab_s* sl, void* obj, void(*dtor)(void*)); //return 0 if dealloc is successful
 
 //helper function
 int is_obj_valid(slab_s* sl, void* obj); //check if the pointer to dealloc is valid
