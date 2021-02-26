@@ -8,16 +8,16 @@
 
 //pointer to the first cache
 kmem_cache_s* cache_list_head = NULL;
-//mutex used for sync
+//mutex used for thread safety
 HANDLE mtx;
 
 
 void kmem_init(void* space, int block_num){
 
 	//initializing the mutex
-	mtx = CreateMutex(NULL, FALSE, NULL);
+	mtx = CreateSemaphore(NULL, 1, 1, NULL);
 	if (mtx == NULL) {
-		printf("unable to allocate mutex??");
+		printf("Error: Cannot alocate a windows.h semaphore");
 		return;
 	}
 
@@ -47,7 +47,7 @@ kmem_cache_t* _kmem_cache_create(const char* name, size_t size, void(*ctor)(void
 	kmem_cache_s* cache = (kmem_cache_s*)buddy_allocate(1);
 	//error checking
 	if (cache == NULL) {
-		printf("Cache err: Unable to alocate another cache manager!\n");
+		printf("Cache error: Unable to alocate another cache manager!\n");
 		return cache;
 	}
 	
@@ -55,15 +55,24 @@ kmem_cache_t* _kmem_cache_create(const char* name, size_t size, void(*ctor)(void
 	cache->empty_slabs = NULL;
 	cache->partial_slabs = NULL;
 	cache->full_slabs = NULL;
+
 	cache->count_empty = 0;
 	cache->count_partial = 0;
 	cache->count_full = 0;
+
 	cache->obj_size = size;
+
 	cache->num_of_allocated_objs = 0;
 	cache->num_of_blocks = 1;
-	cache->objs_per_slab = 0;
+	cache->objs_per_slab = -1;
+
 	cache->num_of_errors = 0;
+
+	cache->wasted = -1;
+	cache->offset = 0;
+
 	strcpy_s(cache->name, 30, name);
+
 	cache->ctor = ctor;
 	cache->dtor = dtor;
 	cache->next = cache_list_head;
@@ -82,8 +91,10 @@ int kmem_cache_shrink(kmem_cache_t* cachep){
 }
 
 int _kmem_cache_shrink(kmem_cache_t* cachep) {
+
 	int num_freed = 0;
-	//check if the pointer is valid!
+
+	//check if the pointer is valid
 	if (!is_cache_valid(cachep)) {
 		printf("No such cache exists!\n");
 		return num_freed;
@@ -92,9 +103,10 @@ int _kmem_cache_shrink(kmem_cache_t* cachep) {
 	//find and deallocate all empty slabs
 	slab_s* tmp = cachep->empty_slabs, * helper = NULL;
 	while (tmp != NULL) {
-		num_freed++;
+		//num_freed++;
 		helper = tmp->next;
-		cachep->num_of_blocks -= tmp->num_of_blocks;
+		cachep->num_of_blocks -= (tmp->num_of_blocks + 1);
+		num_freed += tmp->num_of_blocks + 1;
 		deallocate_a_slab(tmp);
 		tmp = helper;
 	}
@@ -103,7 +115,7 @@ int _kmem_cache_shrink(kmem_cache_t* cachep) {
 	cachep->empty_slabs = NULL;
 	cachep->count_empty = 0;
 
-	return num_freed;
+	return num_freed + 1;
 }
 
 void* kmem_cache_alloc(kmem_cache_t* cachep){
@@ -124,7 +136,7 @@ void* _kmem_cache_alloc(kmem_cache_t* cachep) {
 	//try to allocate an object in partialy filled slabs
 	if (cachep->partial_slabs != NULL) {
 		//print_slab(cachep->partial_slabs);
-		ret = allocate_obj_from_slab(cachep->partial_slabs, cachep->ctor);
+		ret = allocate_obj_from_slab(cachep->partial_slabs);
 		//move the slab to full slab list if needed
 		if (cachep->partial_slabs->state == 2) {
 			slab_s* tmp = cachep->partial_slabs;
@@ -137,7 +149,7 @@ void* _kmem_cache_alloc(kmem_cache_t* cachep) {
 	}
 	//try to allocate an object in empty slabs
 	else if (cachep->empty_slabs != NULL) {
-		ret = allocate_obj_from_slab(cachep->empty_slabs, cachep->ctor);
+		ret = allocate_obj_from_slab(cachep->empty_slabs);
 		//move the slab to partials and update empty list
 		slab_s* tmp = cachep->empty_slabs;
 		cachep->empty_slabs = cachep->empty_slabs->next;
@@ -148,16 +160,19 @@ void* _kmem_cache_alloc(kmem_cache_t* cachep) {
 	}
 
 	else { //must allocate a new slab
-		slab_s* tmp = allocate_a_slab(cachep->obj_size, &(cachep->objs_per_slab));
+		slab_s* tmp = allocate_a_slab(cachep->obj_size, &(cachep->objs_per_slab), cachep->ctor, &cachep->wasted, cachep->offset);
 		//error checking!
 		if (tmp == NULL) {
 			printf("Err cache: Can't allocate a slab\n");
 			cachep->num_of_errors++;
 			return NULL;
 		}
+		cachep->offset += CACHE_L1_LINE_SIZE;
+		if (cachep->offset > cachep->wasted)
+			cachep->offset = 0;
 		cachep->num_of_blocks += tmp->num_of_blocks;
 		
-		ret = allocate_obj_from_slab(tmp, cachep->ctor);
+		ret = allocate_obj_from_slab(tmp);
 		
 		//update partials list
 		tmp->next = cachep->partial_slabs;
@@ -228,14 +243,14 @@ void _kfree(const void* objp) {
 
 	kmem_cache_s* cp = cache_list_head;
 	char firstBuffer[30];
-	sprintf_s(firstBuffer, 30, "size-2^%d", 17); //17 is the first buffer in the cache list
+	sprintf_s(firstBuffer, 30, "size-2^%d", 17); //2^17 is the first buffer in the cache list
 	while (cp != NULL) {
 		if (strcmp(cp->name, firstBuffer) == 0)
 			break;
 		cp = cp->next;
 	}
 	if (cp == NULL) {
-		printf("Cache err: unable to find a buffer to free from!\n");
+		printf("Cache error: unable to find a buffer to free from!\n");
 		return;
 	}
 	//try to dealloc from every buffer
@@ -244,7 +259,7 @@ void _kfree(const void* objp) {
 			return;
 		cp = cp->next;
 	}
-	printf("Cache err: no such object allocated in buffers!\n");
+	printf("Cache error: no such object allocated in buffers!\n");
 }
 
 void kmem_cache_destroy(kmem_cache_t* cachep){
@@ -255,7 +270,7 @@ void kmem_cache_destroy(kmem_cache_t* cachep){
 
 void _kmem_cache_destroy(kmem_cache_t* cachep) {
 	if (!is_cache_valid(cachep)) {
-		printf("Cache err: No such cache exists to be destroyed\n");
+		printf("Cache error: No such cache exists to be destroyed\n");
 		return;
 	}
 	//first deallocate all of the slabs
@@ -298,19 +313,19 @@ int kmem_cache_error(kmem_cache_t* cachep){
 	mutex_wait();
 
 	if (!is_cache_valid(cachep)) {
-		printf("Cache err: Cannot print, such cache does not exist!\n");
+		printf("Cache error: Cannot print, such cache does not exist!\n");
 		mutex_signal();
 		return -1;
 	}
 
-	printf("Error found so far for cache named %s: %d\n", cachep->name, cachep->num_of_errors);
+	printf("Errors found so far for cache named %s: %d\n", cachep->name, cachep->num_of_errors);
 	mutex_signal();
 	return cachep->num_of_errors;
 }
 
 void _kmem_cache_info(kmem_cache_t* cachep) {
 	if (!is_cache_valid(cachep)) {
-		printf("Cache err: Cannot print, such cache does not exist!\n");
+		printf("Cache error: Cannot print, such cache does not exist!\n");
 		return;
 	}
 	print_cache(cachep);
@@ -324,6 +339,12 @@ int is_cache_valid(void* cachep){
 			return 1;
 		tmp = tmp->next;
 	}
+	tmp = cache_list_head;
+	printf("Available caches: ");
+	while(tmp != NULL){
+		printf("%s", tmp->name);
+		tmp = tmp->next;
+	}
 	return 0;
 }
 
@@ -332,10 +353,11 @@ void print_cache(kmem_cache_s* c){
 	printf("Object size: %d\n", c->obj_size);
 	printf("Blocks occcupied (including slabs): %d\n", c->num_of_blocks);
 	printf("This cache has %d slabs right now\n", c->count_empty + c->count_full + c->count_partial);
-	printf("Num of objects per slab: %d (0 if no objects are allocated yet!)\n", c->objs_per_slab);
+	printf("Num of objects per slab: %d (-1 if no objects are allocated yet!)\n", c->objs_per_slab);
 	printf("Num of objects allocated: %d\n", c->num_of_allocated_objs);
 	int max_objs = (c->count_empty + c->count_partial + c->count_full) * c->objs_per_slab;
-	printf("Occupancy so far: %.2f\n", (double)c->num_of_allocated_objs / max_objs);
+	if(c->num_of_allocated_objs != 0)
+		printf("Occupancy so far: %.2f\n", (double)c->num_of_allocated_objs / max_objs);
 	printf("\n");
 }
 
@@ -400,7 +422,7 @@ int _kmem_cache_free(kmem_cache_t* cachep, void* objp, int is_internal){
 
 	//if the user called this function, print an error
 	if (is_internal == 0) {
-		printf("Cache err: No such object exists!\n");
+		printf("Cache error: No such object exists!\n");
 		cachep->num_of_errors++;
 	}
 	return -1;
@@ -408,5 +430,5 @@ int _kmem_cache_free(kmem_cache_t* cachep, void* objp, int is_internal){
 
 //mutex sync functions
 void mutex_wait() { WaitForSingleObject(mtx, INFINITE);}
-void mutex_signal() { ReleaseMutex(mtx); }
+void mutex_signal() { ReleaseSemaphore(mtx, 1, NULL); }
 
