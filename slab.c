@@ -45,11 +45,17 @@ kmem_cache_t* kmem_cache_create(const char* name, size_t size, void(*ctor)(void*
 kmem_cache_t* _kmem_cache_create(const char* name, size_t size, void(*ctor)(void*), void (*dtor)(void*)) {
 	//alocate a new cache manager
 	kmem_cache_s* cache = (kmem_cache_s*)buddy_allocate(1);
+
 	//error checking
 	if (cache == NULL) {
 		printf("Cache error: Unable to alocate another cache manager!\n");
 		return cache;
 	}
+
+	//calculate how many blocks one slab takes up
+	int block_num = (10 * size) / BLOCK_SIZE;
+	if (10 *size % BLOCK_SIZE != 0)
+		block_num++;
 	
 	//initializing the members
 	cache->empty_slabs = NULL;
@@ -64,11 +70,12 @@ kmem_cache_t* _kmem_cache_create(const char* name, size_t size, void(*ctor)(void
 
 	cache->num_of_allocated_objs = 0;
 	cache->num_of_blocks = 1;
-	cache->objs_per_slab = -1;
+	cache->objs_per_slab = (block_num * BLOCK_SIZE) / size;
+	cache->blocks_per_slab = block_num;
 
 	cache->num_of_errors = 0;
 
-	cache->wasted = -1;
+	cache->wasted = (block_num * BLOCK_SIZE) % size;
 	cache->offset = 0;
 
 	strcpy_s(cache->name, 30, name);
@@ -105,8 +112,8 @@ int _kmem_cache_shrink(kmem_cache_t* cachep) {
 	while (tmp != NULL) {
 		//num_freed++;
 		helper = tmp->next;
-		cachep->num_of_blocks -= (tmp->num_of_blocks + 1);
-		num_freed += tmp->num_of_blocks + 1;
+		cachep->num_of_blocks -= (cachep->blocks_per_slab + 1);
+		num_freed += cachep->blocks_per_slab + 1;
 		deallocate_a_slab(tmp);
 		tmp = helper;
 	}
@@ -115,7 +122,7 @@ int _kmem_cache_shrink(kmem_cache_t* cachep) {
 	cachep->empty_slabs = NULL;
 	cachep->count_empty = 0;
 
-	return num_freed + 1;
+	return num_freed;
 }
 
 void* kmem_cache_alloc(kmem_cache_t* cachep){
@@ -160,7 +167,7 @@ void* _kmem_cache_alloc(kmem_cache_t* cachep) {
 	}
 
 	else { //must allocate a new slab
-		slab_s* tmp = allocate_a_slab(cachep->obj_size, &(cachep->objs_per_slab), cachep->ctor, &cachep->wasted, cachep->offset);
+		slab_s* tmp = allocate_a_slab(cachep->obj_size, cachep->blocks_per_slab, cachep->ctor, cachep->offset);
 		//error checking!
 		if (tmp == NULL) {
 			printf("Cache rror: Can't allocate a slab\n");
@@ -170,7 +177,7 @@ void* _kmem_cache_alloc(kmem_cache_t* cachep) {
 		cachep->offset += CACHE_L1_LINE_SIZE;
 		if (cachep->offset > cachep->wasted)
 			cachep->offset = 0;
-		cachep->num_of_blocks += tmp->num_of_blocks;
+		cachep->num_of_blocks += cachep->blocks_per_slab + 1;
 		
 		ret = allocate_obj_from_slab(tmp);
 		
@@ -190,6 +197,73 @@ void kmem_cache_free(kmem_cache_t* cachep, void* objp) {
 	mutex_signal();
 }
 
+int _kmem_cache_free(kmem_cache_t* cachep, void* objp, int is_internal) {
+	//is it a valid cache pointer
+	if (!is_cache_valid(cachep)) {
+		printf("Cache error: Unable to dealloc object, no such cache exists\n");
+		return -1;
+	}
+
+	//is the object in the partials
+	slab_s* tmp = cachep->partial_slabs, * prev = NULL;
+	while (tmp != NULL) {
+		//try to dealloc from a slab
+		//if the obj is deallocated the function returns 0
+		if (dealloc_obj_from_slab(tmp, objp, cachep->dtor) == 0) {
+			cachep->num_of_allocated_objs--;
+			//move to empty list if needed
+			if (tmp->state == 0) {
+				//if this is the first partial - meaning the only partial, reset the partial pointer
+				if (tmp == cachep->partial_slabs)
+					cachep->partial_slabs = cachep->partial_slabs->next;
+				//if not just move the pointer
+				else
+					prev->next = tmp->next;
+				tmp->next = cachep->empty_slabs;
+				cachep->empty_slabs = tmp;
+				cachep->count_partial--;
+				cachep->count_empty++;
+			}
+			return 0;
+		}
+		prev = tmp;
+		tmp = tmp->next;
+	}
+
+	//try to dealloc from full slabs
+	tmp = cachep->full_slabs;
+	prev = NULL;
+	while (tmp != NULL) {
+		if (dealloc_obj_from_slab(tmp, objp, cachep->dtor) == 0) {
+			cachep->num_of_allocated_objs--;
+			//move the slab to partials
+
+			//check if this is the list head
+			if (tmp == cachep->full_slabs)
+				cachep->full_slabs = cachep->full_slabs->next;
+			//if it's not just move the pointer
+			else
+				prev->next = tmp->next;
+
+			tmp->next = cachep->partial_slabs;
+			cachep->partial_slabs = tmp;
+			cachep->count_partial++;
+			cachep->count_full--;
+
+			return 0;
+		}
+		prev = tmp;
+		tmp = tmp->next;
+	}
+
+	//if the user called this function, print an error
+	if (is_internal == 0) {
+		printf("Cache error: No such object exists!\n");
+		cachep->num_of_errors++;
+	}
+	return -1;
+}
+
 void* kmalloc(size_t size){
 	mutex_wait();
 	void* ret = _kmalloc(size);
@@ -198,12 +272,15 @@ void* kmalloc(size_t size){
 }
 
 void* _kmalloc(size_t size) {
+
 	kmem_cache_s* cp;
+
 	//max value is 2^17
 	if (size > (size_t)pow(2, 17)) {
 		printf("Cache error: No buffer is that big!\n");
 		return NULL;
 	}
+
 	int power = (int)ceil(log((double)size) / log(2.0));
 	//min value is 2^5
 	if (power < 5)
@@ -309,6 +386,28 @@ void kmem_cache_info(kmem_cache_t* cachep){
 	mutex_signal();
 }
 
+void _kmem_cache_info(kmem_cache_t* cachep) {
+	if (!is_cache_valid(cachep)) {
+		printf("Cache error: Cannot print, such cache does not exist!\n");
+		return;
+	}
+	print_cache(cachep);
+}
+
+void print_cache(kmem_cache_s* c) {
+	printf("Cache name: %s\n", c->name);
+	printf("Object size: %d\n", c->obj_size);
+	printf("Blocks occcupied (including slabs): %d\n", c->num_of_blocks);
+	printf("This cache has %d slabs right now\n", c->count_empty + c->count_full + c->count_partial);
+	printf("Num of objects per slab: %d\n", c->objs_per_slab);
+	printf("Num of objects allocated: %d\n", c->num_of_allocated_objs);
+	int max_objs = (c->count_empty + c->count_partial + c->count_full) * c->objs_per_slab;
+	if (c->num_of_allocated_objs != 0)
+		printf("Occupancy so far: %.2f\n", (double)c->num_of_allocated_objs / max_objs);
+	printf("\n");
+}
+
+
 int kmem_cache_error(kmem_cache_t* cachep){
 	mutex_wait();
 
@@ -321,14 +420,6 @@ int kmem_cache_error(kmem_cache_t* cachep){
 	printf("Errors found so far for cache named %s: %d\n", cachep->name, cachep->num_of_errors);
 	mutex_signal();
 	return cachep->num_of_errors;
-}
-
-void _kmem_cache_info(kmem_cache_t* cachep) {
-	if (!is_cache_valid(cachep)) {
-		printf("Cache error: Cannot print, such cache does not exist!\n");
-		return;
-	}
-	print_cache(cachep);
 }
 
 //helper function to see if the cachep is valid
@@ -346,86 +437,6 @@ int is_cache_valid(void* cachep){
 		tmp = tmp->next;
 	}
 	return 0;
-}
-
-void print_cache(kmem_cache_s* c){
-	printf("Cache name: %s\n", c->name);
-	printf("Object size: %d\n", c->obj_size);
-	printf("Blocks occcupied (including slabs): %d\n", c->num_of_blocks);
-	printf("This cache has %d slabs right now\n", c->count_empty + c->count_full + c->count_partial);
-	printf("Num of objects per slab: %d (-1 if no objects are allocated yet!)\n", c->objs_per_slab);
-	printf("Num of objects allocated: %d\n", c->num_of_allocated_objs);
-	int max_objs = (c->count_empty + c->count_partial + c->count_full) * c->objs_per_slab;
-	if(c->num_of_allocated_objs != 0)
-		printf("Occupancy so far: %.2f\n", (double)c->num_of_allocated_objs / max_objs);
-	printf("\n");
-}
-
-int _kmem_cache_free(kmem_cache_t* cachep, void* objp, int is_internal){
-	//is it a valid cache pointer
-	if (!is_cache_valid(cachep)) {
-		printf("Cache error: Unable to dealloc object, no such cache exists\n");
-		return -1;
-	}
-
-	//is the object in the partials
-	slab_s* tmp = cachep->partial_slabs, * prev = NULL;
-	while (tmp != NULL) {
-		//try to dealloc from a slab
-		//if the obj is deallocated the function returns 0
-		if (dealloc_obj_from_slab(tmp, objp, cachep->dtor) == 0) {
-			cachep->num_of_allocated_objs--;
-			//move to empty list if needed
-			if (tmp->state == 0) {
-				//if this is the first partial - meaning the only partial, reset the partial pointer
-				if (tmp == cachep->partial_slabs)
-					cachep->partial_slabs = cachep->partial_slabs->next;
-				//if not just move the pointer
-				else
-					prev->next = tmp->next;
-				tmp->next = cachep->empty_slabs;
-				cachep->empty_slabs = tmp;
-				cachep->count_partial--;
-				cachep->count_empty++;
-			}
-			return 0;
-		}
-		prev = tmp;
-		tmp = tmp->next;
-	}
-
-	//try to dealloc from full slabs
-	tmp = cachep->full_slabs;
-	prev = NULL;
-	while (tmp != NULL) {
-		if (dealloc_obj_from_slab(tmp, objp, cachep->dtor) == 0) {
-			cachep->num_of_allocated_objs--;
-			//move the slab to partials
-
-			//check if this is the list head
-			if (tmp == cachep->full_slabs)
-				cachep->full_slabs = cachep->full_slabs->next;
-			//if it's not just move the pointer
-			else
-				prev->next = tmp->next;
-
-			tmp->next = cachep->partial_slabs;
-			cachep->partial_slabs = tmp;
-			cachep->count_partial++;
-			cachep->count_full--;
-
-			return 0;
-		}
-		prev = tmp;
-		tmp = tmp->next;
-	}
-
-	//if the user called this function, print an error
-	if (is_internal == 0) {
-		printf("Cache error: No such object exists!\n");
-		cachep->num_of_errors++;
-	}
-	return -1;
 }
 
 //mutex sync functions
