@@ -85,6 +85,7 @@ kmem_cache_t* _kmem_cache_create(const char* name, size_t size, void(*ctor)(void
 	cache->next = cache_list_head;
 
 	//update the cache list
+	cache->next = cache_list_head;
 	cache_list_head = cache;
 
 	return cache;
@@ -376,6 +377,19 @@ void _kmem_cache_destroy(kmem_cache_t* cachep) {
 		tmp = helper;
 	}
 
+	//update the cache list
+	if (cachep == cache_list_head)
+		cache_list_head = cachep->next;
+	else {
+		kmem_cache_s* current = cache_list_head, * helper = NULL;
+		while (current != cachep) {
+			helper = current;
+			current = current->next;
+		}
+		if(helper != NULL) //handle nullptr exception
+			helper->next = current->next;
+	}
+
 	//deallocate the cache itself
 	buddy_deallocate(cachep, 1);
 }
@@ -428,12 +442,6 @@ int is_cache_valid(void* cachep){
 	while (tmp != NULL) {
 		if (tmp == cachep)
 			return 1;
-		tmp = tmp->next;
-	}
-	tmp = cache_list_head;
-	printf("Available caches: ");
-	while(tmp != NULL){
-		printf("%s", tmp->name);
 		tmp = tmp->next;
 	}
 	return 0;
