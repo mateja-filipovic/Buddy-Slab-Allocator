@@ -7,11 +7,7 @@
 
 #define MAX_VECT_SIZE 512 //512 * 8 = 4096 maximum
 
-slab_s* allocate_a_slab(int obj_size, int* objs_per_slab_ret, void(*ctor)(void*), int* wasted_ret, int offs) {
-	//get the number of blocks needed
-	int block_num = (10 * obj_size) / BLOCK_SIZE;
-	if (10 * obj_size % BLOCK_SIZE != 0)
-		block_num++;
+slab_s* allocate_a_slab(int obj_size, int block_num, void(*ctor)(void*), int offs) {
 
 	slab_s* sl = buddy_allocate(1);
 	//error checking
@@ -21,6 +17,7 @@ slab_s* allocate_a_slab(int obj_size, int* objs_per_slab_ret, void(*ctor)(void*)
 	}
 
 	sl->base_addr = buddy_allocate(block_num);
+
 	if (sl->base_addr == NULL) {
 		printf("Slab error: Can't allocate another slab!\n");
 		return NULL;
@@ -29,11 +26,6 @@ slab_s* allocate_a_slab(int obj_size, int* objs_per_slab_ret, void(*ctor)(void*)
 	sl->starting_addr = (char*)sl->base_addr + offs;      //always cast to char* cos of pointer arithmetic!!
 	sl->ending_addr = (char*)sl->base_addr + BLOCK_SIZE * block_num;
 
-	if(*objs_per_slab_ret == -1)
-		*objs_per_slab_ret = (block_num * BLOCK_SIZE - sizeof(slab_s)) / obj_size;
-	if (*wasted_ret == -1) {
-		*wasted_ret = (block_num * BLOCK_SIZE) % obj_size;
-	}
 
 	sl->num_of_blocks = block_num;
 	sl->capacity = (block_num * BLOCK_SIZE) / obj_size;
@@ -64,13 +56,6 @@ slab_s* allocate_a_slab(int obj_size, int* objs_per_slab_ret, void(*ctor)(void*)
 	return sl;
 }
 
-void print_slab(slab_s* sl) {
-	printf("Slab base addr: %p\n", sl->base_addr);
-	printf("Slab starting addr: %p\n", sl->starting_addr);
-	printf("Slab ending addr: %p\n", sl->ending_addr);
-	printf("Slab capacity: %d, allocated so far: %d, obj size: %d\n", sl->capacity, sl->num_of_allocs, sl->obj_size);
-}
-
 void* allocate_obj_from_slab(slab_s* sl) {
 	if (sl->capacity == sl->num_of_allocs)
 		return NULL;
@@ -89,17 +74,12 @@ void* allocate_obj_from_slab(slab_s* sl) {
 	else if (sl->num_of_allocs == sl->capacity) //|| sl->first_free == 0) //second condition added, more error checking!
 		sl->state = 2;
 
-	//just in case a dealloced object gets allocated again
-	//if (sl->ctor != NULL)
-		//(*sl->ctor)(ret);
-
 	return ret;
 }
 
 void deallocate_a_slab(slab_s* sl){
 	buddy_deallocate(sl->base_addr, sl->num_of_blocks);
 	buddy_deallocate((void*)sl, 1);
-
 }
 
 int dealloc_obj_from_slab(slab_s* sl, void* obj, void(*dtor)(void*)){
@@ -109,8 +89,6 @@ int dealloc_obj_from_slab(slab_s* sl, void* obj, void(*dtor)(void*)){
 	int obj_index = get_obj_index(sl, obj);
 	if (obj_index == -1)
 		return -2; //the obj is not from this slab
-
-
 
 	//update the free slots list
 	set_bit(sl, obj_index, 0);
@@ -148,17 +126,6 @@ int get_obj_index(slab_s* sl, void* obj) {
 void* get_obj_address(slab_s* sl, int index){
 	void* ret = (char*)sl->starting_addr + index * sl->obj_size;
 	return ret;
-}
-
-void print_bit_vect(slab_s* sl){
-	char* bv = sl->bit_vector;
-	int i;
-	for (i = 0; i < sl->capacity; i++) {
-		printf("%d", get_bit(sl, i));
-		if ((i+1) % 8 == 0 && i != 0)
-			printf(", ");
-	}
-	printf("\n");
 }
 
 void set_bit(slab_s* sl, int index, int bit) {

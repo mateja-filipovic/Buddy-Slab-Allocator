@@ -36,6 +36,7 @@ typedef struct kmem_cache_s{
 	int obj_size;
 	int num_of_allocated_objs;
 	int objs_per_slab;
+	int blocks_per_slab;
 	int num_of_blocks;
 
 	//how many errors has this cache managed
@@ -55,10 +56,8 @@ typedef struct kmem_cache_s{
 	struct kmem_cache_s* next;
 }kmem_cache_s;
 
-slab_s* allocate_a_slab(int obj_size, int* objs_per_slab_ret, void(*ctor)(void*), int* wasted_ret, int offs); //allocate a new slab
+slab_s* allocate_a_slab(int obj_size, int block_num, void(*ctor)(void*), int offs); //allocate a new slab
 void deallocate_a_slab(slab_s* sl); //free a slab
-
-void print_slab(slab_s* sl); //print slab info
 
 void* allocate_obj_from_slab(slab_s* sl); //allocate an object and initialize it
 int dealloc_obj_from_slab(slab_s* sl, void* obj, void(*dtor)(void*)); //return 0 if dealloc is successful
@@ -67,8 +66,7 @@ int dealloc_obj_from_slab(slab_s* sl, void* obj, void(*dtor)(void*)); //return 0
 int get_obj_index(slab_s* sl, void* obj); //check if the pointer to dealloc is valid
 void* get_obj_address(slab_s* sl, int index);
 
-void print_bit_vect(slab_s* sl);
-
+//for bit vector manipulation
 void set_bit(slab_s* sl, int index, int bit);
 int get_bit(slab_s* sl, int index);
 
