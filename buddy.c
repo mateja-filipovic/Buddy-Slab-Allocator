@@ -56,7 +56,7 @@ void* buddy_allocate(int sizeInBlocks){
 	while (_get_blk_size(i) < sizeInBlocks)
 		i++;
 	order = i;
-	//find the firstbig enough block available
+	//find the first big enough chunk available
 	for (;; i++) {
 		if (i > BUDDY->max_order)
 			return NULL;
