@@ -128,7 +128,7 @@ void* kmem_cache_alloc(kmem_cache_t* cachep){
 void* _kmem_cache_alloc(kmem_cache_t* cachep) {
 	//check if the pointer is valid
 	if (!is_cache_valid(cachep)) {
-		printf("Cache err: No such cache exists");
+		printf("Cache error: No such cache exists");
 		return NULL;
 	}
 
@@ -163,7 +163,7 @@ void* _kmem_cache_alloc(kmem_cache_t* cachep) {
 		slab_s* tmp = allocate_a_slab(cachep->obj_size, &(cachep->objs_per_slab), cachep->ctor, &cachep->wasted, cachep->offset);
 		//error checking!
 		if (tmp == NULL) {
-			printf("Err cache: Can't allocate a slab\n");
+			printf("Cache rror: Can't allocate a slab\n");
 			cachep->num_of_errors++;
 			return NULL;
 		}
@@ -201,7 +201,7 @@ void* _kmalloc(size_t size) {
 	kmem_cache_s* cp;
 	//max value is 2^17
 	if (size > (size_t)pow(2, 17)) {
-		printf("Cache err: No buffer is that big!\n");
+		printf("Cache error: No buffer is that big!\n");
 		return NULL;
 	}
 	int power = (int)ceil(log((double)size) / log(2.0));
@@ -221,14 +221,14 @@ void* _kmalloc(size_t size) {
 
 	//more error checking, might be redundant!
 	if (cp == NULL) {
-		printf("Cache err: Could not find buffer!\n");
+		printf("Cache error: Could not find buffer!\n");
 		return NULL;
 	}
 
 	//no space to allocate another 2^5 slab!
 	void* ret = _kmem_cache_alloc(cp);
 	if (ret == NULL)
-		printf("Cache err: Can't allocate another slab for kmalloc!\n");
+		printf("Cache error: Can't allocate another slab for kmalloc!\n");
 
 	return ret;
 }
@@ -364,7 +364,7 @@ void print_cache(kmem_cache_s* c){
 int _kmem_cache_free(kmem_cache_t* cachep, void* objp, int is_internal){
 	//is it a valid cache pointer
 	if (!is_cache_valid(cachep)) {
-		printf("Cache err: Unable to dealloc object, no such cache exists\n");
+		printf("Cache error: Unable to dealloc object, no such cache exists\n");
 		return -1;
 	}
 
