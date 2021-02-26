@@ -1,6 +1,6 @@
 # Slab memory allocator
 ## Description
-This is a university course project for Operating Systems 2. It implements a Slab allocator, using a buddy allocator as a backend.
+This is a university course project for Operating Systems 2. It's am implementation of the Slab allocator, which uses the buddy allocator as a backend.
 ## Some important notes
 * the project is tested using Microsoft Visual Studio
 * everything is thread safe, sync is done using semaphores from the windows.h header file
