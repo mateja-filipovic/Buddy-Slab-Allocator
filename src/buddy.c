@@ -1,7 +1,8 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
-#include "buddy.h"
+
+#include "../inc/buddy.h"
 
 buddy_s* BUDDY;
 

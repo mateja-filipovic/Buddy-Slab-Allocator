@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "slab.h": "c",
+        "buddy.h": "c",
+        "cache.h": "c"
+    }
+}

@@ -1,4 +1,4 @@
-#include "cache.h"
+#include "../inc/cache.h"
 
 #define NUM_OF_BLOCKS 1000
 #define NUM_OF_OBJS 50

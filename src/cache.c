@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "cache.h"
 #include <string.h>
 
-#include "slab.h"
+#include "../inc/cache.h"
+#include "../inc/slab.h"
 
 #define MAX_VECT_SIZE 512 //512 * 8 = 4096 maximum
 

@@ -2,9 +2,10 @@
 #include <stdio.h>
 #include <math.h>
 #include <windows.h>
-#include "slab.h"
-#include "buddy.h"
-#include "cache.h"
+
+#include "../inc/slab.h"
+#include "../inc/buddy.h"
+#include "../inc/cache.h"
 
 //pointer to the first cache
 kmem_cache_s* cache_list_head = NULL;
