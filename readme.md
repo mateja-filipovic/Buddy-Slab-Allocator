@@ -1,4 +1,4 @@
-# Slab memory allocator
+# Buddy-Slab memory allocator
 
 ## Project summary
 An implementation of a kernel memory allocator. FrontEnd consists of a Slab Allocator, while the backend implements a Buddy Allocator.
